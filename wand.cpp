@@ -41,12 +41,13 @@ struct interface {
 
 static std::vector<interface> get_inet_interfaces(void)
 {
-    struct ifaddrs *ifap = NULL;
+    struct ifaddrs *ifap = NULL, *ifap_orig = NULL;
     int ret;
     std::vector<interface> result;
 
     ret = getifaddrs(&ifap);
     if(ret) return result;
+    ifap_orig = ifap;
 
     while(ifap) {
 
@@ -71,7 +72,7 @@ static std::vector<interface> get_inet_interfaces(void)
         ifap = ifap->ifa_next; //next interface
     }
 
-    if(ifap) freeifaddrs(ifap);
+    if(ifap_orig) freeifaddrs(ifap_orig);
     
     return result;
 }
@@ -79,7 +80,6 @@ static std::vector<interface> get_inet_interfaces(void)
 typedef struct _wand_t
 {
     std::vector<interface> interfaces;
-    
 } wand_t;
 
 int wand_init(wand_t *wt)
