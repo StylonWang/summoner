@@ -8,7 +8,8 @@
 
 enum {
     SPELL_INVALID = 0,
-    SPELL_APARECIUM = 1,
+    SPELL_APARECIUM,
+    SPELL_APARECIUM_REPLY,
 };
 
 #pragma pack(push, 1)

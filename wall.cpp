@@ -146,6 +146,23 @@ void service_stop(service_t *t)
     t->can_stop = 1;
 }
 
+void handle_spell(spell_t *sp)
+{
+    // ignore incompatible version
+    if(SPELL_VERSION!=sp->version) return;
+
+    switch(sp->spell) {
+    case SPELL_APARECIUM:
+
+
+
+        break;
+    default:
+
+        break;
+    }
+}
+
 void service_serve(service_t *t)
 {
 	/* Read from the socket. */
@@ -180,12 +197,15 @@ void service_serve(service_t *t)
 			ERR("Reading datagram message error: %s\n", strerror(errno));
 		}
 		else {
-			printf("Reading datagram message...OK.\n");
-			//printf("The message from multicast server %s is: \"%s\"\n",
-			//	   inet_ntoa(srcaddr.sin_addr),
-			//		databuf);
+			DBG("The message from  %s is: \"%d:%d\"\n",
+				   inet_ntoa(srcaddr.sin_addr),
+                   spell.version,
+                   spell.spell
+               );
 		}
-    }
+
+        handle_spell(&spell);
+    } // end of while loop
 
     DBG("service stopped\n");
 }
