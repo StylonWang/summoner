@@ -1,9 +1,13 @@
 
 CC=g++
 
-wand:: wand.cpp
-		${CC} -Wall $? -o $@
+default:: wand wall
 
+wand: wand.cpp
+		${CC} -Wall -g $? -o $@
+
+wall: wall.cpp
+		${CC} -Wall -g $? -o $@
 
 clean::
-		rm -f wand
+		rm -f wand wall

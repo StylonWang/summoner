@@ -120,7 +120,7 @@ int wand_init(wand_t *wt)
             return -1;
         }
 
-        int loop = 0;
+        int loop = 1;
         if (0!=setsockopt(it->sd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop))) {
             ERR("cannot disable multicast loop: %s\n", strerror(errno));
             close(it->sd);
