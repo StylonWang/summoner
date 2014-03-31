@@ -70,6 +70,8 @@ typedef struct _service_t {
 	struct ip_mreq group;
 	int sd;
 
+    char ip[INET_ADDRSTRLEN];
+
     int can_stop;
 
 } service_t;
@@ -82,6 +84,7 @@ int service_init(service_t *t)
     t->can_stop = 0;
 
     DBG("local ip %s\n", local_ip);
+    snprintf(t->ip, sizeof(t->ip), "%s", local_ip);
 
 	/* Create a datagram socket on which to receive. */
 	t->sd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -146,17 +149,76 @@ void service_stop(service_t *t)
     t->can_stop = 1;
 }
 
-void handle_spell(spell_t *sp)
+static int service_aparecium_reply(service_t *t, spell_t *sp)
+{
+    int sd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    struct in_addr local_if;
+    int ret;
+
+    if(sd<0) {
+        ERR("cannot create socket: %s\n", strerror(errno));
+        return -1;
+    }
+
+    //TODO: will we need to do this on each send? (is this affecting this socket ony?)
+    // assign this interface to send multicast packets
+    local_if.s_addr = inet_addr(t->ip);
+    if (0!=setsockopt
+        (sd, IPPROTO_IP, IP_MULTICAST_IF, (char *)&local_if,
+         sizeof(local_if))) {
+
+        ERR("cannot set local interface: %s\n", strerror(errno));
+        close(sd);
+        return -1;
+    }
+
+    int loop = 1;
+    if (0!=setsockopt(sd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop))) {
+        ERR("cannot disable multicast loop: %s\n", strerror(errno));
+        close(sd);
+        return -1;
+    }
+
+    loop = 3;
+    socklen_t size = -5;
+    getsockopt(sd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, &size);
+    DBG("multicast looping is %d, sz%d\n", loop, size);
+
+    struct sockaddr_in group_sock;
+    memset((char *)&group_sock, 0, sizeof(group_sock));
+    group_sock.sin_family = AF_INET;
+    group_sock.sin_addr.s_addr = inet_addr(SPELL_MULTICAST_IP);
+    group_sock.sin_port = htons(SPELL_MULTICAST_PORT);
+
+    spell_t s;
+
+    memset(&s, 0, sizeof(s));
+    s.version = SPELL_VERSION;
+    s.spell = SPELL_APARECIUM_REPLY;
+
+    DBG("sending APARECIUM REPLY...\n");
+    ret = sendto(t->sd, &s, sizeof(s), 0, (struct sockaddr *)&group_sock,
+                              sizeof(group_sock));
+
+    if(ret<0) {
+        ERR("%s error: %s\n", __FUNCTION__, strerror(errno));
+    }
+    DBG("APARECIUM REPLY sent\n");
+
+    return 0;
+}
+
+static void handle_spell(service_t *t, spell_t *sp)
 {
     // ignore incompatible version
     if(SPELL_VERSION!=sp->version) return;
 
     switch(sp->spell) {
+
     case SPELL_APARECIUM:
-
-
-
+        service_aparecium_reply(t, sp);
         break;
+
     default:
 
         break;
@@ -204,7 +266,7 @@ void service_serve(service_t *t)
                );
 		}
 
-        handle_spell(&spell);
+        handle_spell(t, &spell);
     } // end of while loop
 
     DBG("service stopped\n");
