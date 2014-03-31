@@ -38,11 +38,13 @@ static char *get_local_inet_ip(void)
     while(ifap) {
 
         struct sockaddr_in *addr = (struct sockaddr_in *)ifap->ifa_addr;
+
+		DBG("Checking interface %s, family %d\n", ifap->ifa_name, addr->sin_family);
         
         // skip other than IPV4
         if(AF_INET==addr->sin_family && strncmp(ifap->ifa_name, "lo", 2)) {
 
-#if 0
+#if 1
             DBG("%s:%d %s, %s\n", 
                     (addr->sin_family==AF_INET)? "INET" :
                     (addr->sin_family==AF_INET6)? "INET6" :
@@ -76,9 +78,16 @@ typedef struct _service_t {
 
 } service_t;
 
-int service_init(service_t *t)
+int service_init(service_t *t, char *prefer_local_ip)
 {
-    char *local_ip = get_local_inet_ip();
+    char *local_ip = NULL;
+	
+	if(NULL==prefer_local_ip) {
+		local_ip = get_local_inet_ip();
+	}
+	else {
+		local_ip = prefer_local_ip;
+	}
 
     memset(t, 0, sizeof(*t));
     t->can_stop = 0;
@@ -284,15 +293,18 @@ static void service_sig_handler(int signo)
 int main(int argc, char **argv)
 {
     int ret;
+	char *prefer_local_ip = NULL;
 
     if(0!=geteuid()) {
         ERR("Must have super user privilege, abort!\n");
         goto error;
     }
 
+	if(argc>1) prefer_local_ip = argv[1];
+
     signal(SIGINT, service_sig_handler);
 
-    ret = service_init(&g_t);
+    ret = service_init(&g_t, prefer_local_ip);
     if(ret<0) {
         goto error;
     }
