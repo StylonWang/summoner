@@ -13,6 +13,11 @@ struct InetInterface
 //    int sd; // socket to UDP multicast
 
     // constructor
+    InetInterface()
+    {
+        name[0] = 0;
+        strncpy(ip, "0.0.0.0", sizeof(ip));
+    }
     InetInterface(const char *n, const char *ipaddr)
     {
         strncpy(name, n, sizeof(name));

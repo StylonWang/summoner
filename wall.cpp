@@ -22,8 +22,7 @@
 
 #include "spells.h"
 
-#define DBG(fmt, args...) do { fprintf(stdout, fmt, ##args ); } while(0)
-#define ERR(fmt, args...) do { fprintf(stderr, fmt, ##args); } while(0)
+#include "sdebug.h"
 
 static char *get_local_inet_ip(void)
 {

@@ -21,8 +21,7 @@
 
 #include "spells.h"
 
-#define DBG(fmt, args...) do { fprintf(stdout, fmt, ##args ); } while(0)
-#define ERR(fmt, args...) do { fprintf(stderr, fmt, ##args); } while(0)
+#include "sdebug.h"
 
 struct interface {
     char name[16];
