@@ -80,6 +80,10 @@ static std::vector<interface> get_inet_interfaces(void)
 typedef struct _wand_t
 {
     std::vector<interface> interfaces;
+
+    int rsd;
+	struct sockaddr_in rsockaddr;
+
 } wand_t;
 
 int wand_init(wand_t *wt)
@@ -147,6 +151,49 @@ int wand_init(wand_t *wt)
 #endif //0
     }
 
+    // create socket to receive UDP reply
+    wt->rsd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if(wt->rsd<0) {
+        ERR("cannot create reply socket: %s\n", strerror(errno));
+        //TODO: error handling
+        return -1;
+    }
+
+	/* Enable SO_REUSEADDR to allow multiple instances of this */
+	/* application to receive copies of the multicast datagrams. */
+	{
+		int reuse = 1;
+		if (setsockopt
+		    (wt->rsd, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse,
+		     sizeof(reuse)) < 0) {
+			ERR("Setting SO_REUSEADDR error: %s\n", strerror(errno));
+			close(wt->rsd);
+            //TODO: error handling
+            return -1;
+		} 
+	}
+
+    // set non-blocking mode
+    int opt = 1;
+    if(-1==ioctl(wt->rsd, FIONBIO, &opt)) {
+        ERR("cannot set to nonblock: %s\n", strerror(errno));
+        close(wt->rsd);
+        //TODO: error handling
+        return -1;
+    }
+
+	memset((char *)&wt->rsockaddr, 0, sizeof(wt->rsockaddr));
+	wt->rsockaddr.sin_family = AF_INET;
+	wt->rsockaddr.sin_port = htons(SPELL_MULTICAST_PORT);
+	wt->rsockaddr.sin_addr.s_addr = INADDR_ANY;
+	if (bind(wt->rsd, (struct sockaddr *)&wt->rsockaddr, sizeof(wt->rsockaddr))) {
+		perror("Binding datagram socket error");
+		close(wt->rsd);
+        //TODO: error handling
+		return -1;
+	} else
+		printf("Binding datagram socket...OK.\n");
+
     return 0;
 }
 
@@ -185,6 +232,40 @@ int wand_send_discovery(wand_t *wt)
 
 int wand_receive_replies(wand_t *wt)
 {
+    int try_times = 100;
+
+    do {
+        spell_t spell;
+		struct sockaddr_in srcaddr;
+		int srcaddrlen = sizeof(struct sockaddr_in);
+		int ret = 0;
+	    int datalen;
+
+        // clean up
+        memset(&spell, 0, sizeof(spell));
+        spell.version = SPELL_VERSION;
+        spell.spell = SPELL_INVALID;
+
+		datalen = sizeof(spell);
+		memset(&srcaddr, 0, sizeof(srcaddr));
+		ret = recvfrom(wt->rsd, &spell, datalen, 0, 
+				(struct sockaddr *)&srcaddr, (socklen_t *)&srcaddrlen);
+
+        if(ret<0 && EAGAIN==errno) {
+            usleep(100*1000);
+        }
+        else if(ret < 0) {
+			ERR("Reading datagram message error: %s %d\n", strerror(errno), errno);
+		}
+        else {
+			DBG("The message from  %s is: \"%d:%d\"\n",
+				   inet_ntoa(srcaddr.sin_addr),
+                   spell.version,
+                   spell.spell
+               );
+		}
+    } while(try_times-- >0);
+
     return 0;
 }
 
