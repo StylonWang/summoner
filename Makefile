@@ -10,7 +10,8 @@ wall: wall.cpp
 		${CC} -Wall -g $^ -o $@
 
 clean::
-		rm -f wand wall iif_test
+		rm -f wand wall iif_test mcastsend_test mcastrecv_test
+		rm -rf *.dSYM
 
 iif_test:: inetinterface.cpp iif_test.cpp
 		${CC} -Wall -g $^ -o $@
