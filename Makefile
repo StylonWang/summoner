@@ -1,7 +1,7 @@
 
 CC=g++
 
-default:: wand wall iif_test mcastsend_test mcastrecv_test
+default:: wand wall iif_test mcastsend_test mcastrecv_test ssdp_test
 
 wand: wand.cpp
 		${CC} -Wall -g $^ -o $@
@@ -21,3 +21,7 @@ mcastsend_test:: inetinterface.cpp mcastsend_test.cpp udpmcastsender.cpp
 
 mcastrecv_test:: inetinterface.cpp mcastrecv_test.cpp udpmcastreceiver.cpp
 		${CC} -Wall -g $^ -o $@
+
+ssdp_test:: inetinterface.cpp udpmcastreceiver.cpp udpmcastsender.cpp ssdp_test.cpp
+		${CC} -Wall -g $^ -o $@
+

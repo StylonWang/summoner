@@ -8,48 +8,64 @@
 #include "inetinterface.h"
 #include "sdebug.h"
 
-int UDPMCastSender::Init(const InetInterface &iface, const char *mcastip, const short port, bool nonblocking)
+int UDPMCastSender::Init(const InetInterface &iface, const char *mcastip, const short port, bool nonblocking,
+                         const short bind_src_port)
 {
-        m_if = iface;
+    m_if = iface;
 
-        memset((char *)&m_group_sock, 0, sizeof(m_group_sock)); 
-        m_group_sock.sin_family = AF_INET; 
-        m_group_sock.sin_addr.s_addr = inet_addr(mcastip);
-        m_group_sock.sin_port = htons(port);
+    memset((char *)&m_group_sock, 0, sizeof(m_group_sock)); 
+    m_group_sock.sin_family = AF_INET; 
+    m_group_sock.sin_addr.s_addr = inet_addr(mcastip);
+    m_group_sock.sin_port = htons(port);
 
-        m_sd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if(m_sd<0) return -1;
+    m_sd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if(m_sd<0) return -1;
 
-        //TODO: will we need to do this on each send? (is this affecting this socket ony?)
-        // assign this interface to send multicast packets
-        struct in_addr local_if;
-        local_if.s_addr = inet_addr(m_if.ip);
-        if (0!=setsockopt(m_sd, IPPROTO_IP, IP_MULTICAST_IF, (char *)&local_if, sizeof(local_if))) {
-            ERR("cannot set local interface: %s\n", strerror(errno));
+    if(-1!=bind_src_port) {
+        memset((char *)&m_source_sock, 0, sizeof(m_source_sock)); 
+        m_source_sock.sin_family = AF_INET; 
+        m_source_sock.sin_addr.s_addr = inet_addr(iface.ip);
+        m_source_sock.sin_port = htons(bind_src_port);
+
+        if (bind(m_sd, (struct sockaddr *)&m_source_sock, sizeof(m_source_sock))) {
+            ERR("Binding datagram socket error: %s\n", strerror(errno));
+            close(m_sd);
+            return -1;
+        } else {
+            DBG("Binding datagram socket...OK.\n");
+        }
+    }
+
+    //TODO: will we need to do this on each send? (is this affecting this socket ony?)
+    // assign this interface to send multicast packets
+    struct in_addr local_if;
+    local_if.s_addr = inet_addr(m_if.ip);
+    if (0!=setsockopt(m_sd, IPPROTO_IP, IP_MULTICAST_IF, (char *)&local_if, sizeof(local_if))) {
+        ERR("cannot set local interface: %s\n", strerror(errno));
+        return -1;
+    }
+
+    int loop = 1;
+    if (0!=setsockopt(m_sd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop))) {
+        ERR("cannot disable multicast loop: %s\n", strerror(errno));
+        return -1;
+    }
+
+    loop = 3;
+    socklen_t size = -5;
+    getsockopt(m_sd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, &size);
+    DBG("multicast looping is %d, sz%d\n", loop, size);
+
+    // set non-blocking mode
+    if(nonblocking) {
+        int opt = 1;
+        if(-1==ioctl(m_sd, FIONBIO, &opt)) {
+            ERR("cannot set to nonblock: %s\n", strerror(errno));
             return -1;
         }
+    }
 
-        int loop = 1;
-        if (0!=setsockopt(m_sd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop))) {
-            ERR("cannot disable multicast loop: %s\n", strerror(errno));
-            return -1;
-        }
-
-        loop = 3;
-        socklen_t size = -5;
-        getsockopt(m_sd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, &size);
-        DBG("multicast looping is %d, sz%d\n", loop, size);
-
-        // set non-blocking mode
-        if(nonblocking) {
-            int opt = 1;
-            if(-1==ioctl(m_sd, FIONBIO, &opt)) {
-                ERR("cannot set to nonblock: %s\n", strerror(errno));
-                return -1;
-            }
-        }
-
-        return 0; // success
+    return 0; // success
 }
 
 UDPMCastSender::UDPMCastSender()

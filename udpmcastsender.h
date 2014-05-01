@@ -11,6 +11,7 @@
 class UDPMCastSender
 {
     struct sockaddr_in m_group_sock;
+    struct sockaddr_in m_source_sock;
     int m_sd; // socket to UDP multicast
     
     InetInterface m_if;
@@ -19,7 +20,8 @@ class UDPMCastSender
         UDPMCastSender();
         ~UDPMCastSender();
 
-        int Init(const InetInterface &iface, const char *mcastip, const short port, bool nonblocking);
+        int Init(const InetInterface &iface, const char *mcastip, const short port, bool nonblocking=true,
+                 const short bind_src_port=-1);
 
         ssize_t Send(const void *buffer, size_t length);
 };

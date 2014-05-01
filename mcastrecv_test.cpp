@@ -25,7 +25,7 @@ int main(int argc, char **argv)
 
     //ret = receiver.Init(interfaces[0], argv[1], atoi(argv[2]));
     //WARNING: hard coding to 2nd interface
-    ret = receiver.Init(interfaces[1], argv[1], atoi(argv[2]));
+    ret = receiver.Init(interfaces, argv[1], atoi(argv[2]));
     if(ret<0) {
         printf("init failed!\n");
         return -1;
