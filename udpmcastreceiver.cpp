@@ -18,7 +18,7 @@ UDPMCastReceiver::~UDPMCastReceiver()
     // find redundant sockets and do nothing if found
     for(it=m_sockets.begin(); it!=m_sockets.end(); ++it) {
 
-        if( setsockopt(it->m_sd, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&(it->m_groupreq), 
+        if( it->m_mcastip[0]!=0 && setsockopt(it->m_sd, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&(it->m_groupreq), 
                     sizeof(it->m_groupreq)) < 0) {
             ERR("Dropping multicast group error: %s\n", strerror(errno));
         }
@@ -46,6 +46,7 @@ int UDPMCastReceiver::Receive(char *buf, int buflen, int timeout_in_msec)
         
         FD_SET(it->m_sd, &rset);
         if(it->m_sd > largest_sd) largest_sd = it->m_sd;
+        DBG("add sd %d in set, lgsd=%d\n", it->m_sd, largest_sd);
     }
 
     //TODO: convert large mili-seconds into seconds+usec
@@ -70,28 +71,32 @@ int UDPMCastReceiver::Receive(char *buf, int buflen, int timeout_in_msec)
     else if(0==ret) {
         return 0;
     }
-    
+
     // identify the socket with data
     int sd = -1;
     for(it=m_sockets.begin(); it!=m_sockets.end(); ++it) {
         if(FD_ISSET(it->m_sd, &rset)) {
+            DBG("sd %d in set\n", sd);
             sd = it->m_sd;
             break;
         }
     }
 
-    memset(&srcaddr, 0, sizeof(srcaddr));
-    ret = recvfrom(sd, buf, buflen, 0, 
-            (struct sockaddr *)&srcaddr, (socklen_t *)&srcaddrlen);
-    if(ret < 0) {
-        ERR("Reading datagram message error: %s\n", strerror(errno));
-    }
-    else {
-        DBG("Msg with len=%d from %s : \"0x%x:0x%x\"\n",
-               ret,
-               inet_ntoa(srcaddr.sin_addr),
-               buf[0], buf[1]
-           );
+    if(-1!=sd) {
+
+        memset(&srcaddr, 0, sizeof(srcaddr));
+        ret = recvfrom(sd, buf, buflen, 0, 
+                (struct sockaddr *)&srcaddr, (socklen_t *)&srcaddrlen);
+        if(ret < 0) {
+            ERR("Reading datagram message error: %s\n", strerror(errno));
+        }
+        else {
+            DBG("Msg with len=%d from %s : \"0x%x:0x%x\"\n",
+                   ret,
+                   inet_ntoa(srcaddr.sin_addr),
+                   buf[0], buf[1]
+               );
+        }
     }
     return ret;
 }
@@ -103,17 +108,31 @@ UDPMCastReceiver::InitOne(const InetInterface &iface, const char *mcastip, const
 
     // find redundant sockets and do nothing if found
     for(it=m_sockets.begin(); it!=m_sockets.end(); ++it) {
-        if(iface==it->m_if && strncmp(it->m_mcastip, mcastip, sizeof(it->m_mcastip))==0 &&
-                port==it->m_port) {
-            DBG("alread have socket on %s for %s %d\n", iface.ip, mcastip, port);
-            return 0; // do nothing
+        
+        if(NULL==mcastip) { // UDP unicast
+            if(iface==it->m_if && port==it->m_port) {
+                DBG("alread have socket on %s for port %d\n", iface.ip, port);
+                return 0; // do nothing
+            }
+        }
+        else { // UDP multicase
+            if(iface==it->m_if && strncmp(it->m_mcastip, mcastip, sizeof(it->m_mcastip))==0 &&
+                    port==it->m_port) {
+                DBG("alread have socket on %s for %s %d\n", iface.ip, mcastip, port);
+                return 0; // do nothing
+            }
         }
     }
 
     MCastSocket s;
 
     s.m_if = iface;
-    strncpy(s.m_mcastip, mcastip, sizeof(s.m_mcastip));
+    if(NULL==mcastip) {
+        s.m_mcastip[0] = 0; // empty string, to signify this is a unicast receiver
+    }
+    else {
+        strncpy(s.m_mcastip, mcastip, sizeof(s.m_mcastip));
+    }
     s.m_port = port;
 
     DBG("Init, local ip=%s, mcast ip=%s, mcast port=%d\n", iface.ip, mcastip, port);
@@ -144,12 +163,14 @@ UDPMCastReceiver::InitOne(const InetInterface &iface, const char *mcastip, const
     memset(&group_sock, 0, sizeof(group_sock));
 	group_sock.sin_family = AF_INET;
 	group_sock.sin_port = htons(port);
-	//group_sock.sin_addr.s_addr = INADDR_ANY;
-	group_sock.sin_addr.s_addr = inet_addr(s.m_if.ip);
+	group_sock.sin_addr.s_addr = INADDR_ANY; // must be INADDR_ANY to receive multicast
+	//group_sock.sin_addr.s_addr = inet_addr(s.m_if.ip);
+
+    // it is normal if bind fails except for the 1st interface
 	if (bind(s.m_sd, (struct sockaddr *)&group_sock, sizeof(group_sock))) {
 		ERR("Binding datagram socket error: %s\n", strerror(errno));
-		close(s.m_sd);
-		return -1;
+		//close(s.m_sd);
+		//return -1;
 	} else {
 		DBG("Binding datagram socket...OK.\n");
     }
@@ -158,17 +179,20 @@ UDPMCastReceiver::InitOne(const InetInterface &iface, const char *mcastip, const
 	/* interface. Note that this IP_ADD_MEMBERSHIP option must be */
 	/* called for each local interface over which the multicast */
 	/* datagrams are to be received. */
-    memset(&s.m_groupreq, 0, sizeof(s.m_groupreq));
-	s.m_groupreq.imr_multiaddr.s_addr = inet_addr(mcastip);
-	s.m_groupreq.imr_interface.s_addr = inet_addr(s.m_if.ip);
-	if (setsockopt
-	    (s.m_sd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&s.m_groupreq,
-	     sizeof(s.m_groupreq)) < 0) {
-		ERR("Adding multicast group error: %s\n", strerror(errno));
-		close(s.m_sd);
-		return -1;
-	} else
-		DBG("Adding multicast group...OK.\n");
+    if(NULL!=mcastip) {
+        memset(&s.m_groupreq, 0, sizeof(s.m_groupreq));
+        s.m_groupreq.imr_multiaddr.s_addr = inet_addr(mcastip);
+        s.m_groupreq.imr_interface.s_addr = inet_addr(s.m_if.ip);
+        if (setsockopt
+            (s.m_sd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&s.m_groupreq,
+             sizeof(s.m_groupreq)) < 0) {
+            ERR("Adding multicast group error: %s\n", strerror(errno));
+            close(s.m_sd);
+            return -1;
+        } else {
+            DBG("Adding multicast group...OK.\n");
+        }
+    }
 
     m_sockets.push_back(s);
     return 0;
