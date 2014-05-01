@@ -2,13 +2,11 @@
 #include <stdlib.h>
 
 #include "udpmcastreceiver.h"
-#include "spells.h"
-
 
 int main(int argc, char **argv)
 {
-    if(argc<3) {
-        printf("Usage: %s mcast_ip mcast_port\n", argv[0]);
+    if(argc<2) {
+        printf("Usage: %s port\n", argv[0]);
         return -1;
     }
 
@@ -23,8 +21,8 @@ int main(int argc, char **argv)
     UDPMCastReceiver receiver;
     int ret;
 
-    //ret = receiver.Init(interfaces[0], argv[1], atoi(argv[2]));
-    ret = receiver.Init(interfaces, argv[1], atoi(argv[2]));
+    // init as unicast receiver
+    ret = receiver.Init(interfaces, NULL, atoi(argv[1]));
     if(ret<0) {
         printf("init failed!\n");
         return -1;
